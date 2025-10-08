@@ -1,0 +1,9 @@
+project_id = "buddy"
+
+[api]
+  host = "https://api.supabase.com"
+
+[db]
+  schema = ["public"]
+  extra_search_path = ["extensions"]
+  shadow_schema = "shadow"
