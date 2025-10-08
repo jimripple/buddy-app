@@ -1,71 +1,97 @@
-# Buddy – AI Writing Coach
+# 📚 Buddy App
 
-Buddy is a Next.js + Supabase MVP that helps writers plan projects, draft scenes, and stay motivated with daily streaks and AI feedback.
+## ✨ Project Overview
 
-## Prerequisites
+Buddy is an AI-assisted writing dashboard for authors who want to plan stories and maintain daily writing habits. Organize your work into projects, chapters, and scenes, track daily word goals, and draft inside a focused three-panel editor. The app is built with **Next.js 15**, **Supabase**, and **TailwindCSS** for a modern, real-time experience.
 
-- Node.js 18+
-- npm 9+
-- [Supabase CLI](https://supabase.com/docs/guides/cli) (login with `supabase login`)
+## 🚀 Features
 
-## Setup
+- Supabase authentication with email magic links (plus local dev login)
+- Dashboard for managing multiple writing projects
+- Project editor with chapters, scenes, and review panes
+- Real-time autosave to Supabase
+- Daily word-goal and streak tracking
+- Persistent state backed by Supabase Postgres with RLS
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Copy the example environment and fill in your Supabase credentials:
-   ```bash
-   cp .env.example .env.local
-   ```
-   - `NEXT_PUBLIC_SUPABASE_URL` – project URL from the Supabase dashboard
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` – anon public API key
-   - `NEXT_PUBLIC_SITE_URL` – full URL used in magic-link callbacks (defaults to `http://localhost:3000`)
-3. Apply database migrations:
-   ```bash
-   ./scripts/apply-migrations.sh
-   ```
-   The script uses the Supabase CLI. Set `SUPABASE_PROJECT_REF` or `SUPABASE_DB_URL` if you want to target a specific project/database.
-4. Start the dev server:
-   ```bash
-   npm run dev
-   ```
-   Visit `http://localhost:3000` and sign in with the magic link flow.
+## 🧰 Tech Stack
 
-## Available Scripts
+- **Next.js 15** (App Router) + **TypeScript**
+- **Supabase** (Auth, Database, RLS)
+- **TailwindCSS** for styling
+- **ESLint** & **Prettier** for linting and formatting
 
-- `npm run dev` – start the development server
-- `npm run build` / `npm start` – build and run the production bundle
-- `npm run lint` – run eslint
-- `npm test` – run Jest unit tests for streak logic and helpers
+## 🛠️ Local Setup
 
-## Supabase Notes
+```bash
+# 1. Clone the repo
+git clone https://github.com/jimripple/buddy-app.git
+cd buddy-app
 
-- SQL migrations live in `supabase/migrations`.
-- All tables enforce row-level security. Policies limit access to the authenticated project owner.
-- The `scripts/apply-migrations.sh` helper wraps the Supabase CLI to run `migration up` or `db push` based on your environment variables.
+# 2. Install dependencies
+npm install
 
-## Project Structure Highlights
+# 3. Copy environment template
+cp .env.example .env.local
+```
 
-- `src/app/(auth)` – magic-link authentication flow
-- `src/app/(dashboard)` – project list, editor, review/memory/goals panels
-- `src/app/api` – JSON + markdown endpoints (autosave, review, export, etc.) validated with Zod
-- `src/lib/supabase` – client/server helpers for Supabase SSR
-- `src/lib/streak` – streak calculations with accompanying Jest tests
-- `src/lib/ai` – `Reviewer` interface and the `MockReviewer` implementation used by the MVP
+Add your Supabase configuration to `.env.local`:
 
-## Tests
+```
+NEXT_PUBLIC_SUPABASE_URL=your-project-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=public-anon-key
+SUPABASE_SERVICE_ROLE_KEY=service-role-key (optional)
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+NEXT_PUBLIC_PASSWORD_LOGIN=0
+```
 
-Jest is configured with `ts-jest` under `jest.config.ts`. Run `npm test` to execute the unit test suite. Add additional tests alongside the modules in `src/` as the product grows.
+Run the development server:
 
-## Migrations & Schema Changes
+```bash
+npm run dev
+```
 
-After updating SQL in `supabase/migrations`, commit the change and rerun `./scripts/apply-migrations.sh` to keep the database in sync. The helper can run against:
+The app will be live at `http://localhost:3000` (or `3001` if the port is in use).
 
-- Local dev stack (`supabase start`) – no extra env vars needed
-- Remote project – set `SUPABASE_PROJECT_REF`
-- Direct database URL – set `SUPABASE_DB_URL` (requires `SUPABASE_ACCESS_TOKEN`)
+## 🗃️ Supabase Setup Notes
 
----
+1. Enable Email Auth
+2. Disable “Confirm email” during local testing
+3. Create tables: `projects`, `chapters`, `scenes`
+4. Add Row-Level Security policies for user-based access
 
-Happy writing!
+## 🧑‍💻 Development Notes
+
+- Uses ESLint + Prettier for consistent formatting
+- Client components are marked with `"use client"`
+- Server components handle secure data fetching via Supabase helpers
+
+## 🧭 Roadmap / Next Steps
+
+- Add AI-based writing suggestions
+- Implement collaboration mode
+- Support version history for scenes
+
+## 🧪 Scripts
+
+| Command         | Description                  |
+| --------------- | ---------------------------- |
+| `npm run dev`   | Start the development server |
+| `npm run build` | Build the production bundle  |
+| `npm run lint`  | Run ESLint checks            |
+| `npm run test`  | Execute unit tests           |
+
+## 🧑‍🔬 Testing
+
+Run all Jest unit tests with:
+
+```bash
+npm run test
+```
+
+## 📜 License
+
+MIT License
+
+## 👤 Author
+
+Created by **James McKinney** ([GitHub @jimripple](https://github.com/jimripple))
