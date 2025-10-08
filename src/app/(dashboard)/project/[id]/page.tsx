@@ -16,7 +16,7 @@ export default async function ProjectPage({
 
   const { data: project, error: pErr } = await supabase
     .from('projects')
-    .select('id, title')
+    .select('id, title, goal_words_per_day')
     .eq('id', id)
     .single()
 
@@ -43,12 +43,24 @@ export default async function ProjectPage({
 
   const initialSceneId = sceneQuery ?? scenes?.[0]?.id ?? null
 
+  const today = new Date().toISOString().slice(0, 10)
+  const { data: todayStats } = await supabase
+    .from('stats_daily')
+    .select('words_written, streak')
+    .eq('project_id', id)
+    .eq('date', today)
+    .maybeSingle()
+
   return (
     <ProjectEditor
-      project={{ id: project.id, title: project.title }}
+      project={{ id: project.id, title: project.title, goal: project.goal_words_per_day ?? null }}
       chapters={chapters ?? []}
       scenes={scenes ?? []}
       initialSceneId={initialSceneId}
+      initialStats={{
+        words: todayStats?.words_written ?? 0,
+        streak: todayStats?.streak ?? 0,
+      }}
     />
   )
 }

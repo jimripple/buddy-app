@@ -19,36 +19,21 @@ type SceneCacheEntry = {
 type SaveState = "idle" | "saving" | "saved" | "error"
 
 type ProjectEditorProps = {
-  project: { id: string; title: string }
+  project: { id: string; title: string; goal: number | null }
   chapters: Chapter[]
   scenes: Scene[]
   initialSceneId: string | null
-}
-
-type ReviewPayload = {
-  summary: string[]
-  strengths: string[]
-  critiques: string[]
-  challenge: string
-}
-
-type MemoryPayload = {
-  review: ReviewPayload | null
-  entities: Array<{
-    id: string
-    kind: string
-    name: string
-    occurrences: number
-    last_seen_chapter: number | null
-    details: unknown
-  }>
+  initialStats: {
+    words: number
+    streak: number
+  }
 }
 
 function countWords(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0
 }
 
-export default function ProjectEditor({ project, chapters, scenes, initialSceneId }: ProjectEditorProps) {
+export default function ProjectEditor({ project, chapters, scenes, initialSceneId, initialStats }: ProjectEditorProps) {
   const [tree, setTree] = useState(() =>
     chapters.map((chapter) => ({
       ...chapter,
@@ -63,17 +48,22 @@ export default function ProjectEditor({ project, chapters, scenes, initialSceneI
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const [isSceneLoading, setIsSceneLoading] = useState(false)
   const [reviewLoading, setReviewLoading] = useState(false)
-  const [reviewData, setReviewData] = useState<ReviewPayload | null>(null)
-  const [memoryData, setMemoryData] = useState<MemoryPayload>({ review: null, entities: [] })
-  const [statsWords, setStatsWords] = useState(0)
-  const [statsStreak, setStatsStreak] = useState(0)
+  const [statsWords, setStatsWords] = useState(initialStats.words)
+  const [statsStreak, setStatsStreak] = useState(initialStats.streak)
   const [lastSavedContent, setLastSavedContent] = useState("")
+  const [exportingFormat, setExportingFormat] = useState<"md" | "txt" | null>(null)
+  const [reviewScoreData, setReviewScoreData] = useState<{
+    summary: string
+    clarity: number
+    pacing: number
+    show_vs_tell: number
+    suggestions: string[]
+  } | null>(null)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const saveResetTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const sceneCache = useRef<Map<string, SceneCacheEntry>>(new Map())
-  const memoryCache = useRef<Map<string, MemoryPayload>>(new Map())
 
   const loadSceneContent = useCallback(async (sceneId: string | null) => {
     if (!sceneId) {
@@ -126,34 +116,6 @@ export default function ProjectEditor({ project, chapters, scenes, initialSceneI
     }
   }, [])
 
-  const loadMemory = useCallback(
-    async (sceneId: string) => {
-      if (memoryCache.current.has(sceneId)) {
-        setMemoryData(memoryCache.current.get(sceneId)!)
-        return
-      }
-
-      try {
-        const response = await fetch(`/api/scenes/${sceneId}/memory`)
-        if (!response.ok) {
-          throw new Error("Failed to fetch scene memory")
-        }
-        const payload = (await response.json()) as MemoryPayload
-        memoryCache.current.set(sceneId, payload)
-        setMemoryData(payload)
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Unable to load memory")
-      }
-    },
-    []
-  )
-
-  useEffect(() => {
-    if (activeSceneId) {
-      void loadMemory(activeSceneId)
-    }
-  }, [activeSceneId, loadMemory])
-
   const liveWordCount = useMemo(() => countWords(content), [content])
 
   useEffect(() => {
@@ -184,8 +146,25 @@ export default function ProjectEditor({ project, chapters, scenes, initialSceneI
   }, [content, liveWordCount, activeChapterId, activeSceneId])
 
   const optimisticWords = useMemo(() => Math.max(statsWords, liveWordCount), [statsWords, liveWordCount])
+  const optimisticStreak = useMemo(() => {
+    if (!project.goal || project.goal <= 0) {
+      return statsStreak
+    }
+    if (statsWords >= project.goal) {
+      return statsStreak
+    }
+    if (optimisticWords >= project.goal) {
+      return Math.max(statsStreak, statsStreak || 1)
+    }
+    return statsStreak
+  }, [project.goal, statsStreak, statsWords, optimisticWords])
 
-  const todaysProgress = useMemo(() => `Today ${optimisticWords} words`, [optimisticWords])
+  const todaysProgress = useMemo(() => {
+    if (!project.goal || project.goal <= 0) {
+      return `Today ${optimisticWords} words`
+    }
+    return `Today ${optimisticWords}/${project.goal} words`
+  }, [optimisticWords, project.goal])
 
   const saveSceneContent = useCallback(
     async (sceneId: string, body: string) => {
@@ -206,14 +185,26 @@ export default function ProjectEditor({ project, chapters, scenes, initialSceneI
             body: JSON.stringify({ content: body, projectId: project.id }),
           })
 
-          const payload = await response.json().catch(() => ({ ok: false }))
-          if (!response.ok || !payload.ok) {
-            throw new Error(payload?.message ?? 'Save failed')
-          }
+         const payload = await response.json().catch(() => ({ ok: false }))
+         if (!response.ok || !payload.ok) {
+           throw new Error(payload?.message ?? 'Save failed')
+         }
 
-          setLastSavedContent(body)
-          setSaveState('saved')
-          setStatsWords((prev) => Math.max(prev, countWords(body)))
+         setLastSavedContent(body)
+         setSaveState('saved')
+          sceneCache.current.set(sceneId, {
+            content: body,
+            word_count: countWords(body),
+            updated_at: new Date().toISOString(),
+          })
+          const serverWords = payload.stats?.words
+          const serverStreak = payload.stats?.streak
+          if (typeof serverWords === 'number') {
+            setStatsWords(serverWords)
+          }
+          if (typeof serverStreak === 'number') {
+            setStatsStreak(serverStreak)
+          }
           if (saveResetTimeoutRef.current) {
             clearTimeout(saveResetTimeoutRef.current)
           }
@@ -283,8 +274,44 @@ export default function ProjectEditor({ project, chapters, scenes, initialSceneI
     return null
   }, [saveState])
 
+  const handleExport = useCallback(
+    async (format: 'md' | 'txt') => {
+      if (!project.id) {
+        return
+      }
+
+      setExportingFormat(format)
+      try {
+        const response = await fetch(`/api/export?projectId=${project.id}&format=${format}`)
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null)
+          throw new Error(payload?.message ?? 'Export failed')
+        }
+
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const disposition = response.headers.get('content-disposition') ?? ''
+        const match = disposition.match(/filename="?([^";]+)"?/)
+        const filename = match?.[1] ?? `project.${format}`
+
+        const link = document.createElement('a')
+        link.href = url
+        link.download = filename
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Export failed')
+      } finally {
+        setExportingFormat(null)
+      }
+    },
+    [project.id]
+  )
+
   return (
-    <div className="space-y-6">
+    <div className="relative space-y-6">
       <header className="flex items-center justify-between border-b border-white/10 pb-4">
         <div>
           <h1 className="text-2xl font-semibold text-white">{project.title}</h1>
@@ -295,6 +322,24 @@ export default function ProjectEditor({ project, chapters, scenes, initialSceneI
             {todaysChip}
           </span>
         ) : null}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleExport('md')}
+            disabled={exportingFormat !== null}
+            className="rounded-md border border-white/10 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 transition hover:border-sky-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {exportingFormat === 'md' ? 'Exporting…' : 'Export Markdown'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleExport('txt')}
+            disabled={exportingFormat !== null}
+            className="rounded-md border border-white/10 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 transition hover:border-sky-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {exportingFormat === 'txt' ? 'Exporting…' : 'Export Plain'}
+          </button>
+        </div>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
@@ -325,7 +370,7 @@ export default function ProjectEditor({ project, chapters, scenes, initialSceneI
           </div>
         </aside>
 
-        <section className="flex flex-col rounded-2xl border border-white/10 bg-slate-900/60">
+        <section className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-slate-900/60 p-4 md:p-6">
           <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
             <span className="text-sm text-slate-400">
               {isSceneLoading ? 'Loading scene…' : `${liveWordCount} words`}
@@ -340,13 +385,13 @@ export default function ProjectEditor({ project, chapters, scenes, initialSceneI
             ref={textareaRef}
             value={content}
             onChange={(event) => setContent(event.target.value)}
-            className="flex-1 resize-none bg-transparent px-4 py-3 text-base text-slate-100 focus:outline-none"
+            className="editor-textarea editor-content column-ruler flex-1 h-full w-full resize-none bg-slate-900/60 px-6 py-5 text-base text-slate-100 rounded-xl ring-1 ring-slate-800 focus:outline-none focus:ring-sky-500"
             placeholder="Start writing your scene…"
           />
         </section>
 
         <aside className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/40 p-4">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Review & Memory</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Buddy Review</h2>
           <button
             onClick={async () => {
               if (!activeSceneId) {
@@ -365,7 +410,10 @@ export default function ProjectEditor({ project, chapters, scenes, initialSceneI
                   throw new Error('Review request failed')
                 }
                 const payload = await response.json()
-                setReviewData(payload.review)
+                if (!payload?.ok) {
+                  throw new Error(payload?.message ?? 'Review failed')
+                }
+                setReviewScoreData(payload.review)
               } catch (error) {
                 toast.error(error instanceof Error ? error.message : 'Unable to run review')
               } finally {
@@ -378,41 +426,61 @@ export default function ProjectEditor({ project, chapters, scenes, initialSceneI
             {reviewLoading ? 'Requesting…' : 'Run Review'}
           </button>
 
-          {reviewData ? (
-            <div className="space-y-3 text-sm text-slate-200">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Summary</h3>
-                <ul className="mt-1 space-y-1">
-                  {reviewData.summary.map((line, index) => (
-                    <li key={`summary-${index}`}>• {line}</li>
+          {reviewScoreData ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-white/10 bg-slate-900/60 p-4">
+                <h3 className="text-sm font-semibold text-slate-100">Summary</h3>
+                <p className="mt-2 text-sm text-slate-300">{reviewScoreData.summary}</p>
+              </div>
+
+              <div className="space-y-3">
+                {[
+                  { key: 'clarity', label: 'Clarity', value: reviewScoreData.clarity },
+                  { key: 'pacing', label: 'Pacing', value: reviewScoreData.pacing },
+                  { key: 'show_vs_tell', label: 'Show vs Tell', value: reviewScoreData.show_vs_tell },
+                ].map(({ key, label, value }) => {
+                  const score = Math.max(0, Math.min(10, value))
+                  return (
+                    <div key={key} className="rounded-lg border border-white/10 bg-slate-900/60 p-3 text-sm text-slate-200">
+                      <div className="flex items-center justify-between">
+                        <span>{label}</span>
+                        <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-100">
+                          {score}/10
+                        </span>
+                      </div>
+                      <div className="mt-2 h-2 rounded-full bg-slate-800">
+                        <div
+                          className="h-2 rounded-full bg-sky-500"
+                          style={{ width: `${(score / 10) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="rounded-lg border border-white/10 bg-slate-900/60 p-4">
+                <h3 className="text-sm font-semibold text-slate-100">Suggestions</h3>
+                <ul className="mt-2 space-y-1 text-sm text-slate-300">
+                  {reviewScoreData.suggestions.map((suggestion, index) => (
+                    <li key={`suggestion-${index}`}>• {suggestion}</li>
                   ))}
                 </ul>
-              </div>
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Strengths</h3>
-                <ul className="mt-1 space-y-1">
-                  {reviewData.strengths.map((line, index) => (
-                    <li key={`strength-${index}`}>• {line}</li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Critiques</h3>
-                <ul className="mt-1 space-y-1">
-                  {reviewData.critiques.map((line, index) => (
-                    <li key={`critique-${index}`}>• {line}</li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Challenge</h3>
-                <p className="mt-1 text-slate-300">{reviewData.challenge}</p>
               </div>
             </div>
           ) : (
             <p className="text-sm text-slate-400">Run a review to get AI feedback.</p>
           )}
         </aside>
+      </div>
+      <div className="pointer-events-none fixed bottom-4 right-4 flex gap-2">
+        <span className="pointer-events-auto rounded-full bg-slate-900/90 px-3 py-1 text-xs text-slate-300 shadow-lg shadow-black/40">
+          Today: <span className="text-slate-100">{optimisticWords}</span>
+          {project.goal ? <span className="text-slate-500">/{project.goal}</span> : null}
+        </span>
+        <span className="pointer-events-auto rounded-full bg-slate-900/90 px-3 py-1 text-xs text-slate-300 shadow-lg shadow-black/40">
+          Streak: <span className="text-slate-100">{optimisticStreak}</span> days
+        </span>
       </div>
     </div>
   )

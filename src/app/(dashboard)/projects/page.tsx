@@ -26,7 +26,7 @@ export default async function ProjectsPage() {
     .order("created_at", { ascending: false });
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-12">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-semibold text-white">Your projects</h1>
@@ -38,12 +38,12 @@ export default async function ProjectsPage() {
       </div>
 
       {projects?.length ? (
-        <div className="grid gap-6 sm:grid-cols-2">
+        <div className="grid gap-8 sm:grid-cols-2">
           {projects.map((project) => (
             <Link
               key={project.id}
               href={`/project/${project.id}`}
-              className="group rounded-2xl border border-white/10 bg-slate-900/50 p-6 transition hover:border-sky-400 hover:bg-slate-900/80"
+              className="group rounded-2xl ring-1 ring-slate-800 bg-slate-900/70 p-6 shadow-xl shadow-slate-950/30 transition hover:ring-sky-500/50 hover:bg-slate-900/80"
             >
               <h2 className="text-xl font-semibold text-white group-hover:text-sky-300">
                 {project.title}
@@ -68,7 +68,7 @@ export default async function ProjectsPage() {
               </dl>
             </Link>
           ))}
-          <div className="flex flex-col justify-between rounded-2xl border border-dashed border-white/15 bg-slate-900/20 p-6">
+          <div className="flex flex-col justify-between gap-6 rounded-2xl border border-dashed border-white/15 bg-slate-900/20 p-6 shadow-xl shadow-slate-950/25">
             <div className="space-y-2">
               <h2 className="text-lg font-semibold text-white">Start something new</h2>
               <p className="text-sm text-slate-400">
@@ -79,15 +79,16 @@ export default async function ProjectsPage() {
           </div>
         </div>
       ) : (
-        <div className="grid gap-6 sm:grid-cols-2">
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-slate-900/30 p-10 text-center">
-            <h2 className="text-xl font-semibold text-white">You don&apos;t have any projects yet</h2>
-            <p className="mt-3 max-w-xs text-sm text-slate-400">
-              Start your first project to keep your chapters, scenes, and AI feedback organized in one place.
-            </p>
-            <div className="mt-6 w-full max-w-sm">
-              <NewProjectModal action={createProject} />
+        <div className="grid gap-8 sm:grid-cols-2">
+          <div className="flex flex-col items-center justify-center gap-6 rounded-2xl border border-dashed border-white/15 bg-slate-900/30 p-12 text-center shadow-xl shadow-slate-950/25">
+            <div className="space-y-3">
+              <h2 className="text-2xl font-semibold text-white">Buddy is ready to help you write your first chapter</h2>
+              <img src="/buddy.svg" alt="Buddy mascot" className="mx-auto mb-4 h-10 w-10 opacity-80" />
+              <p className="mx-auto max-w-sm text-sm text-slate-400">
+                Create your first project to start organizing chapters and scenes. Buddy will keep track of your daily progress.
+              </p>
             </div>
+            <NewProjectModal action={createProject} />
           </div>
         </div>
       )}
